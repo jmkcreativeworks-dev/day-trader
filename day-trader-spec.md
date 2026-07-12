@@ -34,17 +34,24 @@ Docker Compose stack under `~/src/day-trader`, own ports, isolated from
   placement in a real (if budget-limited) account. It does have a
   `review_equity_order` tool for pre-trade simulation/warnings, but
   that's a one-off check, not an ongoing sandbox.
-- Robinhood's MCP is built for interactive agent platforms (Claude
-  Desktop, Claude Code, ChatGPT, etc.) with a human authenticating via
-  browser. Whether that connection/session survives unattended for a
-  headless server process running 24/7 is unverified - this is the
-  first thing to test once Agentic access is granted, before flipping
-  the live switch. Budget accordingly: **Phase 1 (paper trading) does
-  not depend on Robinhood access at all.**
-- Because of the above, the system is built broker-agnostic from day
-  one: a `BrokerAdapter` interface with a `PaperBroker` (real quotes,
-  simulated fills/ledger) and a `RobinhoodBroker` stub to fill in once
-  access + headless-session behavior are confirmed.
+- Robinhood's MCP uses the standard MCP Authorization spec (OAuth 2.1,
+  PKCE, dynamic client registration) - the same generic mechanism
+  `claude mcp add --transport http <url>` uses, confirmed against
+  Robinhood's own docs ("paste one URL into your MCP config to connect
+  most agents out of the box"). That means a standard client (we use
+  the official `mcp` Python SDK's OAuth support, see
+  `app/brokers/robinhood_oauth.py`) can request offline access
+  (`refresh_token` grant) and refresh without a human present -
+  *in principle*. Whether that actually holds up unattended for days/
+  weeks on a headless server is still **operationally unverified**;
+  `app/scheduler.py` auto-pauses the bot (never retries silently) if a
+  session ever needs re-authentication, rather than assuming it works.
+- Because of the above, the system is built broker-agnostic: a
+  `BrokerAdapter` interface with `PaperBroker` (real quotes, simulated
+  fills/ledger) and `RobinhoodBroker` (real, implemented Phase 2 - see
+  `CHANGELOG.md` for the date, and the mapping comment at the top of
+  `app/brokers/robinhood_broker.py` for exactly which tool-name/field
+  assumptions are confirmed vs. still best-guess).
 
 ## Architecture
 
@@ -59,8 +66,9 @@ Docker Compose stack under `~/src/day-trader`, own ports, isolated from
                         |                  decisions out
                  Risk Manager -- clamps/blocks decisions that violate
                         |         position size / daily loss / max-positions
-                 Broker Adapter (active one) -- PaperBroker (now) or
-                        |                        RobinhoodBroker (later)
+                 Broker Adapter (active one, by TRADING_MODE) --
+                        |    PaperBroker, or RobinhoodBroker (real MCP
+                        |    calls, gated by LIVE_DRY_RUN - see below)
                  Postgres -- decisions, trades, positions, snapshots, config
                         |
                  FastAPI dashboard -- equity curve, positions, trade log
@@ -136,16 +144,36 @@ check `~/src/README.md` for the next free ports before first deploy
 (placeholders used in this repo: **3002** app, **5434** db - confirm
 and change if already taken).
 
-Secrets (`ANTHROPIC_API_KEY`, later Robinhood MCP auth) live in a
-git-ignored `.env`, never committed.
+Secrets (`ANTHROPIC_API_KEY`, dashboard bootstrap credentials) live in
+a git-ignored `.env`, never committed. Robinhood OAuth tokens (from
+`scripts/robinhood_oauth_setup.py`) live in a git-ignored `secrets/`
+directory, bind-mounted into the container (`ROBINHOOD_TOKEN_FILE`) so
+they survive rebuilds without being baked into the image or committed.
+The container also publishes port **3030**, used only transiently by
+`robinhood_oauth_setup.py`'s local OAuth callback listener.
 
 ## Phasing
 
-1. **Phase 1 - Paper trading (this build)**: PaperBroker + yfinance
-   market data + Claude decisions + risk manager + dashboard. Runs
-   fully once deployed, no Robinhood dependency.
-2. **Phase 2 - Robinhood live**: once Agentic Trading access is
-   granted, implement `RobinhoodBroker` against the MCP tools, verify
-   headless auth persists, run it side-by-side in paper mode against
-   real Robinhood data for a trial period, then flip `bot_state.mode`
-   to `live` deliberately (never automatically).
+1. **Phase 1 - Paper trading**: PaperBroker + yfinance market data +
+   Claude decisions + risk manager + dashboard. Runs fully once
+   deployed, no Robinhood dependency. Done.
+2. **Phase 2 - Robinhood live**: `RobinhoodBroker` is implemented
+   against the MCP tools (`app/brokers/robinhood_broker.py`,
+   `app/brokers/robinhood_oauth.py`), gated by two independent safety
+   layers before it can move real money:
+   - `TRADING_MODE` must be `live` (still `paper` as of this writing -
+     never flipped automatically, see rule below).
+   - Even then, `LIVE_DRY_RUN` (default **true**) makes `place_order`
+     stop after Robinhood's own `review_equity_order` simulation -
+     `place_equity_order` (the real fill) is never called while it's
+     true, but decisions/reasoning still populate the dashboard so
+     live-mode behavior can be compared against paper before it's
+     trusted.
+   - Still to do before ever setting `LIVE_DRY_RUN=false`: confirm via
+     `scripts/robinhood_list_tools.py` that the field-name assumptions
+     in `robinhood_broker.py` actually match Robinhood's responses;
+     verify headless re-auth actually survives days/weeks unattended
+     (not just that the code *should* support it); run it side-by-side
+     against paper mode for a trial period.
+   - Never flip `TRADING_MODE` or `LIVE_DRY_RUN` automatically - always
+     a deliberate `.env` change + restart.

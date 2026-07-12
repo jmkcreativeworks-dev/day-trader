@@ -65,3 +65,60 @@ or delete any other user, including ones they didn't create — the only
 guardrails are "can't delete yourself" and "can't delete the last
 user." Not a problem while this is single-person tooling; would need
 tightening (e.g. an admin flag) before giving a second person access.
+
+## 2026-07-12 — RobinhoodBroker implemented (Phase 2), dry-run only
+
+- `app/brokers/robinhood_broker.py`: replaces the `NotImplementedError`
+  stub with a real implementation against Robinhood's Trading MCP
+  (`get_accounts`, `get_portfolio`, `get_equity_positions`,
+  `review_equity_order`, `place_equity_order` - tool *names* confirmed
+  against Robinhood's own support docs; exact input/output field names
+  are our best guess, called out explicitly in that file's mapping
+  comment, and need checking against real
+  `scripts/robinhood_list_tools.py` output before this is trusted).
+- `app/brokers/robinhood_oauth.py` (new): OAuth 2.1 + PKCE + dynamic
+  client registration via the official `mcp` Python SDK, the same
+  generic mechanism `claude mcp add --transport http` uses. Tokens
+  persist to `ROBINHOOD_TOKEN_FILE` (new setting, default
+  `secrets/robinhood_tokens.json`, git-ignored, bind-mounted so it
+  survives rebuilds). This module never attempts an interactive login
+  itself - `scripts/robinhood_oauth_setup.py` (new) is the one-time
+  human-in-the-browser step; everything else (the broker, in
+  production) is headless and raises `RobinhoodAuthError` instead of
+  blocking on a login prompt that isn't there.
+- `app/scheduler.py`: catches `RobinhoodAuthError` around the
+  broker-dependent part of each tick and auto-pauses the bot
+  (`bot_state.running = False`, reason set to the error) exactly like
+  the risk manager's kill switch does - never retries silently, never
+  flips `TRADING_MODE`.
+- New `LIVE_DRY_RUN` setting (default **true**). `RobinhoodBroker.place_order`
+  always calls `review_equity_order` (Robinhood's own pre-trade
+  simulation, documented as never executing) but skips
+  `place_equity_order` (the real fill) while this is true - so
+  decisions/reasoning still populate the dashboard as
+  `[DRY RUN] ...` non-executed entries, letting live-mode behavior be
+  compared against paper before any real order is ever placed.
+- `RobinhoodBroker` refuses to resolve an account (and thus refuses to
+  trade) if `get_accounts` returns more than one account - it will not
+  guess which one is the isolated Agentic account.
+- New `scripts/robinhood_list_tools.py`: dumps every tool's
+  name/description/input schema/output schema via the same headless
+  connection path the broker uses, to check against the field names
+  hardcoded in `robinhood_broker.py`.
+
+**Why:** this is Phase 2 from `day-trader-spec.md`, now implemented
+but deliberately not yet trusted with money - two independent gates
+(`TRADING_MODE` still `paper`, and `LIVE_DRY_RUN=true` even once it
+isn't) stand between this code and a real order. `LIVE_DRY_RUN` stays
+true regardless of what `TRADING_MODE` gets set to until explicitly
+told otherwise.
+
+**Known gaps, not yet resolved:**
+- Field-name assumptions in `robinhood_broker.py` (cash/equity/position
+  fields, `review_equity_order`/`place_equity_order` argument names)
+  are unverified against a real Robinhood response - pending running
+  `scripts/robinhood_oauth_setup.py` + `scripts/robinhood_list_tools.py`
+  interactively (requires a human browser login, can't be automated).
+- Whether headless OAuth refresh actually survives unattended for
+  days/weeks, as opposed to just being spec-compliant in principle, is
+  unverified until it's been running that way in practice.

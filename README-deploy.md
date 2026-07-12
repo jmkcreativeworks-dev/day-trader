@@ -70,17 +70,62 @@ Visit `http://<devbox-ip>:3002/` (LAN `192.168.1.107` or Tailscale
 
 ## 7. Going live later (Phase 2)
 
+`RobinhoodBroker` is implemented (`app/brokers/robinhood_broker.py`,
+`app/brokers/robinhood_oauth.py`), but stays inert behind two gates:
+`TRADING_MODE` (still `paper`) and `LIVE_DRY_RUN` (default `true`,
+which stops every order after Robinhood's own pre-trade simulation —
+see `CHANGELOG.md` and the mapping comment at the top of
+`robinhood_broker.py`).
+
 1. Request Robinhood Agentic Trading access
    (robinhood.com/us/en/agentic-trading) and open the dedicated
-   Agentic account.
-2. Fund only the Agentic account with money you're prepared to risk —
-   it's isolated from your primary Robinhood account.
-3. Implement `RobinhoodBroker` against the MCP tools documented at
-   robinhood.com/us/en/support/articles/trading-with-your-agent,
-   confirming the connection can run unattended on a server (this is
-   unverified today — Robinhood's MCP is built primarily for
-   interactive agent sessions).
-4. Run it in parallel against paper mode for a while, comparing
-   decisions, before setting `TRADING_MODE=live`.
-5. Never flip modes automatically — always a deliberate `.env` change
-   + restart.
+   Agentic account. Fund only that account with money you're prepared
+   to risk — it's isolated from your primary Robinhood account.
+
+2. Rebuild after pulling in the Phase 2 code (also publishes port 3030
+   for the one-time OAuth callback, and mounts `./secrets` for the
+   token file):
+
+   ```bash
+   docker compose up -d --build
+   ```
+
+3. One-time interactive login — **this needs a real browser, run it
+   yourself**, it can't be scripted end-to-end:
+
+   ```bash
+   docker compose exec day-trader-app python scripts/robinhood_oauth_setup.py
+   ```
+
+   It prints a URL to open and log into Robinhood with. If your
+   browser isn't on this devbox, forward the callback port first:
+
+   ```bash
+   ssh -L 3030:localhost:3030 devbox
+   ```
+
+   Tokens get saved to `secrets/robinhood_tokens.json` (git-ignored,
+   survives rebuilds via the bind mount). Re-run this any time the bot
+   auto-pauses with a `RobinhoodAuthError` reason on the dashboard.
+
+4. Verify the tool/field-name assumptions baked into
+   `robinhood_broker.py` actually match what Robinhood's MCP returns,
+   **before** trusting it with money:
+
+   ```bash
+   docker compose exec day-trader-app python scripts/robinhood_list_tools.py
+   ```
+
+   Compare its output (tool names, input/output schemas) against the
+   mapping comment and the `.get(...)` field-name guesses in
+   `app/brokers/robinhood_broker.py`. Fix anything that doesn't match
+   before going further — this is expected to need at least one
+   iteration, not a formality.
+
+5. Run it in parallel against paper mode for a while with
+   `TRADING_MODE=live` and `LIVE_DRY_RUN=true`, comparing the
+   `[DRY RUN]` decisions it logs against what paper mode would have
+   done, before ever setting `LIVE_DRY_RUN=false`.
+
+6. Never flip `TRADING_MODE` or `LIVE_DRY_RUN` automatically — always
+   a deliberate `.env` change + restart.

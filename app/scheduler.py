@@ -10,6 +10,7 @@ from app.db import SessionLocal
 from app.models import BotState, PortfolioSnapshot, AIDecision
 from app.market_data.yfinance_adapter import YFinanceAdapter
 from app.brokers.paper_broker import PaperBroker
+from app.brokers.robinhood_oauth import RobinhoodAuthError
 from app.risk.risk_manager import RiskManager
 from app.strategy.watchlist import load_watchlist
 from app.strategy.claude_decision_engine import ClaudeDecisionEngine
@@ -31,12 +32,11 @@ def _within_market_hours(now_utc: datetime) -> bool:
 
 
 def get_broker(db, market_data):
-    """Returns the active broker for the configured mode. Live mode is
-    intentionally not wired up yet - see robinhood_broker.py."""
+    """Returns the active broker for the configured mode."""
+    price_lookup = lambda sym: (market_data.get_quote(sym) or type("Q", (), {"price": None})).price
     if settings.TRADING_MODE == "live":
         from app.brokers.robinhood_broker import RobinhoodBroker
-        return RobinhoodBroker()
-    price_lookup = lambda sym: (market_data.get_quote(sym) or type("Q", (), {"price": None})).price
+        return RobinhoodBroker(db, price_lookup)
     return PaperBroker(db, price_lookup)
 
 
@@ -58,62 +58,74 @@ def run_tick():
             return
 
         market_data = YFinanceAdapter()
-        broker = get_broker(db, market_data)
-        risk = RiskManager(db, broker)
+        try:
+            broker = get_broker(db, market_data)
+            risk = RiskManager(db, broker)
 
-        kill_reason = risk.check_kill_switch()
-        if kill_reason:
-            logger.warning("Kill switch tripped: %s", kill_reason)
-            return
+            kill_reason = risk.check_kill_switch()
+            if kill_reason:
+                logger.warning("Kill switch tripped: %s", kill_reason)
+                return
 
-        tickers = load_watchlist(market_data)
-        engine = ClaudeDecisionEngine(broker, market_data)
-        decisions = engine.get_decisions(tickers)
+            tickers = load_watchlist(market_data)
+            engine = ClaudeDecisionEngine(broker, market_data)
+            decisions = engine.get_decisions(tickers)
 
-        for d in decisions:
-            quote = market_data.get_quote(d.symbol)
-            price = quote.price if quote else None
+            for d in decisions:
+                quote = market_data.get_quote(d.symbol)
+                price = quote.price if quote else None
 
-            record = AIDecision(
-                mode=broker.mode, symbol=d.symbol, action=d.action,
-                confidence=d.confidence, reasoning=d.reasoning, raw_response=d.raw,
+                record = AIDecision(
+                    mode=broker.mode, symbol=d.symbol, action=d.action,
+                    confidence=d.confidence, reasoning=d.reasoning, raw_response=d.raw,
+                )
+
+                if d.action == "hold" or price is None:
+                    record.executed = False
+                    db.add(record)
+                    db.commit()
+                    continue
+
+                requested_qty = d.dollar_amount / price if price else 0
+                verdict = risk.evaluate(d.symbol, d.action, requested_qty, price)
+                record.quantity = verdict.quantity
+                record.risk_adjusted = bool(verdict.note)
+                record.risk_note = verdict.note
+
+                if not verdict.allowed:
+                    record.executed = False
+                    db.add(record)
+                    db.commit()
+                    continue
+
+                result = broker.place_order(d.symbol, d.action, verdict.quantity, price)
+                record.executed = result.success
+                if not result.success:
+                    record.risk_note = ((record.risk_note or "") + f" | order failed: {result.message}").strip()
+                db.add(record)
+                db.commit()
+
+            # Snapshot portfolio value for the equity curve
+            snapshot = PortfolioSnapshot(
+                mode=broker.mode,
+                cash=broker.get_cash(),
+                positions_value=broker.get_portfolio_value() - broker.get_cash(),
+                total_value=broker.get_portfolio_value(),
             )
-
-            if d.action == "hold" or price is None:
-                record.executed = False
-                db.add(record)
-                db.commit()
-                continue
-
-            requested_qty = d.dollar_amount / price if price else 0
-            verdict = risk.evaluate(d.symbol, d.action, requested_qty, price)
-            record.quantity = verdict.quantity
-            record.risk_adjusted = bool(verdict.note)
-            record.risk_note = verdict.note
-
-            if not verdict.allowed:
-                record.executed = False
-                db.add(record)
-                db.commit()
-                continue
-
-            result = broker.place_order(d.symbol, d.action, verdict.quantity, price)
-            record.executed = result.success
-            if not result.success:
-                record.risk_note = ((record.risk_note or "") + f" | order failed: {result.message}").strip()
-            db.add(record)
+            db.add(snapshot)
+            state.last_tick_at = now
             db.commit()
 
-        # Snapshot portfolio value for the equity curve
-        snapshot = PortfolioSnapshot(
-            mode=broker.mode,
-            cash=broker.get_cash(),
-            positions_value=broker.get_portfolio_value() - broker.get_cash(),
-            total_value=broker.get_portfolio_value(),
-        )
-        db.add(snapshot)
-        state.last_tick_at = now
-        db.commit()
+        except RobinhoodAuthError as e:
+            # Never block waiting for a browser that isn't there, and
+            # never guess/retry silently - pause and surface it exactly
+            # like the risk manager's kill switch does, so it shows up
+            # on the dashboard until someone re-runs
+            # scripts/robinhood_oauth_setup.py and resumes manually.
+            logger.error("Robinhood auth failure - pausing trading: %s", e)
+            state.running = False
+            state.paused_reason = f"Robinhood auth failed: {e}"
+            db.commit()
 
     except Exception:
         logger.exception("Tick failed")

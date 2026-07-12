@@ -30,6 +30,12 @@ class Settings:
     ROBINHOOD_MCP_URL: str = os.getenv(
         "ROBINHOOD_MCP_URL", "https://agent.robinhood.com/mcp/trading"
     )
+    ROBINHOOD_TOKEN_FILE: str = os.getenv("ROBINHOOD_TOKEN_FILE", "secrets/robinhood_tokens.json")
+    # Safety net: even with TRADING_MODE=live, RobinhoodBroker only calls
+    # Robinhood's own review_equity_order (a pre-trade simulation that
+    # never executes) while this is true - place_equity_order (the real
+    # fill) is skipped. Defaults true; only flip it deliberately.
+    LIVE_DRY_RUN: bool = _bool("LIVE_DRY_RUN", "true")
 
     WATCHLIST_PATH: str = os.getenv("WATCHLIST_PATH", "app/watchlist.yaml")
 
