@@ -134,7 +134,7 @@ async def connect(oauth: OAuthClientProvider):
     async with httpx.AsyncClient(auth=oauth, follow_redirects=True, timeout=30.0) as http_client:
         async with streamable_http_client(
             url=settings.ROBINHOOD_MCP_URL, http_client=http_client
-        ) as (read_stream, write_stream):
+        ) as (read_stream, write_stream, _get_session_id):
             async with ClientSession(read_stream, write_stream) as session:
                 await session.initialize()
                 yield session

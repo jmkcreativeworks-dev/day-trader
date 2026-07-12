@@ -34,8 +34,6 @@ from urllib.parse import parse_qs, urlparse
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from mcp.client.auth import AuthorizationCodeResult  # noqa: E402
-
 from app.brokers.robinhood_oauth import (  # noqa: E402
     FileTokenStorage,
     RobinhoodAuthError,
@@ -56,7 +54,6 @@ class _CallbackHTTPHandler(BaseHTTPRequestHandler):
         if "code" in params:
             self.callback_data["code"] = params["code"][0]
             self.callback_data["state"] = params.get("state", [None])[0]
-            self.callback_data["iss"] = params.get("iss", [None])[0]
             body = b"<html><body><h1>Authorized</h1><p>You can close this tab and return to the terminal.</p></body></html>"
             self.send_response(200)
         elif "error" in params:
@@ -95,7 +92,13 @@ async def _redirect_handler(authorization_url: str) -> None:
 
 
 def _make_callback_handler(callback_data: dict):
-    async def _callback_handler() -> AuthorizationCodeResult:
+    # mcp==1.28.1's OAuthClientProvider expects callback_handler to
+    # return a plain (code, state) tuple - not the AuthorizationCodeResult
+    # dataclass that appears in the SDK's (newer, unreleased) GitHub
+    # main branch example. Checked directly against the installed
+    # package (mcp.client.auth.oauth2.TokenStorage / OAuthClientProvider
+    # signature) after this mismatch broke the first run.
+    async def _callback_handler() -> tuple[str, str | None]:
         print(f"Waiting up to 5 minutes for the callback on :{CALLBACK_PORT} ...")
         deadline = time.time() + 300
         while time.time() < deadline:
@@ -114,18 +117,13 @@ def _make_callback_handler(callback_data: dict):
                 parsed = parse_qs(urlparse(pasted).query)
                 callback_data["code"] = parsed.get("code", [None])[0]
                 callback_data["state"] = parsed.get("state", [None])[0]
-                callback_data["iss"] = parsed.get("iss", [None])[0]
             else:
                 callback_data["code"] = pasted
 
         if not callback_data.get("code"):
             raise RobinhoodAuthError("No authorization code received - aborting.")
 
-        return AuthorizationCodeResult(
-            code=callback_data["code"],
-            state=callback_data.get("state"),
-            iss=callback_data.get("iss"),
-        )
+        return callback_data["code"], callback_data.get("state")
 
     return _callback_handler
 
