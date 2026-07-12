@@ -83,6 +83,28 @@ Docker Compose stack under `~/src/day-trader`, own ports, isolated from
 - `ai_decisions` - timestamp, symbol, action, quantity/dollar amount,
   confidence, full reasoning text, whether risk manager modified/
   blocked it and why, raw model response for audit.
+- `dashboard_users` - username (unique), bcrypt password_hash,
+  created_at. Backs the dashboard's HTTP Basic Auth (see "Access
+  control" below); managed from the `/users` page, no restart needed.
+
+## Access control
+
+The whole app sits behind HTTP Basic Auth (`app/auth.py`,
+`BasicAuthMiddleware`) as defense in depth, in case it's ever reached
+directly via LAN/Tailscale IP instead of through the Cloudflare-Access-
+gated hostname (`/healthz` is exempt, for container health checks).
+Credentials are DB-backed (`dashboard_users`, bcrypt via
+`bcrypt.checkpw`) so accounts can be added/removed from `/users`
+without a restart. `DASHBOARD_USERNAME`/`DASHBOARD_PASSWORD` in `.env`
+only bootstrap the first account when that table is empty - the app
+refuses to start if it's empty and the env password is blank, and
+ignores those two vars entirely once any user exists.
+
+Any logged-in user can currently add or delete any other user,
+including deleting someone else's account (the only protections are:
+can't delete yourself, can't delete the last remaining user). Fine
+while it's a single-person tool; worth revisiting if a second person
+ever gets an account.
 
 ## Watchlist / universe
 

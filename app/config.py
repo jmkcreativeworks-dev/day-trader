@@ -35,7 +35,9 @@ class Settings:
 
     # HTTP Basic Auth on the whole app - defense in depth in case the
     # dashboard is ever reached directly via LAN/Tailscale IP instead of
-    # through the Cloudflare-Access-gated hostname.
+    # through the Cloudflare-Access-gated hostname. Users are DB-backed
+    # (dashboard_users, managed from /users) - these two vars only seed
+    # the first account when that table is empty.
     DASHBOARD_USERNAME: str = os.getenv("DASHBOARD_USERNAME", "admin")
     DASHBOARD_PASSWORD: str = os.getenv("DASHBOARD_PASSWORD", "")
 

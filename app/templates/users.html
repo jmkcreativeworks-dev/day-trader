@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>day-trader — users</title>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#0f1115; color:#e5e7eb; margin:0; padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  h3 { margin-top:0; }
+  .sub { color:#9ca3af; font-size:13px; margin-bottom:20px; }
+  .sub a { color:#93c5fd; }
+  .card { background:#1a1d24; border:1px solid #2a2e37; border-radius:10px; padding:16px; margin-bottom:20px; max-width:480px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #2a2e37; }
+  th { color:#9ca3af; font-weight:500; }
+  button { background:#2563eb; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
+  button.danger { background:#dc2626; padding:4px 10px; font-size:12px; }
+  input[type=text], input[type=password] { background:#0f1115; border:1px solid #2a2e37; color:#e5e7eb; padding:6px 8px; border-radius:6px; width:100%; box-sizing:border-box; }
+  label { display:block; font-size:12px; color:#9ca3af; margin:10px 0 4px; }
+  .error { background:#5f1e1e; color:#fca5a5; padding:10px 12px; border-radius:6px; margin-bottom:16px; font-size:13px; max-width:480px; }
+  .you { color:#93c5fd; font-size:11px; }
+</style>
+</head>
+<body>
+
+<h1>day-trader — dashboard users</h1>
+<div class="sub"><a href="/">&larr; back to dashboard</a></div>
+
+{% if error %}
+<div class="error">{{ error }}</div>
+{% endif %}
+
+<div class="card">
+  <h3>Current users</h3>
+  <table>
+    <tr><th>Username</th><th>Created</th><th></th></tr>
+    {% for u in users %}
+    <tr>
+      <td>{{ u.username }}{% if u.username == current_username %} <span class="you">(you)</span>{% endif %}</td>
+      <td>{{ u.created_at.strftime("%Y-%m-%d") if u.created_at else '-' }}</td>
+      <td>
+        {% if u.username != current_username and users|length > 1 %}
+        <form method="post" action="/users/{{ u.id }}/delete" style="margin:0"
+              onsubmit="return confirm('Delete user \'{{ u.username }}\'? This cannot be undone.');">
+          <button class="danger" type="submit">Delete</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="card">
+  <h3>Add user</h3>
+  <form method="post" action="/users/add">
+    <label>Username</label>
+    <input type="text" name="username" required>
+
+    <label>Password (min. 8 characters)</label>
+    <input type="password" name="password" minlength="8" required>
+
+    <label>Confirm password</label>
+    <input type="password" name="confirm_password" minlength="8" required>
+
+    <div style="margin-top:12px;"><button type="submit">Add user</button></div>
+  </form>
+</div>
+
+</body>
+</html>

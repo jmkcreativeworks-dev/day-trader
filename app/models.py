@@ -26,6 +26,15 @@ class BotState(Base):
     updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
+class DashboardUser(Base):
+    __tablename__ = "dashboard_users"
+
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=True, nullable=False, index=True)
+    password_hash = Column(String, nullable=False)
+    created_at = Column(DateTime, default=utcnow)
+
+
 class RiskConfig(Base):
     __tablename__ = "risk_config"
 

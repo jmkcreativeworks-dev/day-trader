@@ -2,7 +2,9 @@
 scheduler bootstrap."""
 import logging
 from datetime import datetime, timezone
+from urllib.parse import quote
 
+import bcrypt
 from fastapi import FastAPI, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -12,7 +14,9 @@ from sqlalchemy.orm import Session
 from app.auth import BasicAuthMiddleware
 from app.config import settings
 from app.db import Base, engine, get_db
-from app.models import BotState, RiskConfig, PortfolioSnapshot, Position, AIDecision, Trade
+from app.models import (
+    BotState, RiskConfig, PortfolioSnapshot, Position, AIDecision, Trade, DashboardUser,
+)
 from app.scheduler import start_scheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -27,12 +31,6 @@ with engine.begin() as conn:
         "ALTER TABLE bot_state ADD COLUMN IF NOT EXISTS "
         "paper_starting_cash FLOAT DEFAULT 10000"
     ))
-
-if not settings.DASHBOARD_PASSWORD:
-    raise RuntimeError(
-        "DASHBOARD_PASSWORD is not set - refusing to start. Set "
-        "DASHBOARD_USERNAME/DASHBOARD_PASSWORD in .env (see .env.example)."
-    )
 
 app = FastAPI(title="day-trader")
 app.add_middleware(BasicAuthMiddleware)
@@ -57,6 +55,23 @@ def on_startup():
             max_open_positions=settings.MAX_OPEN_POSITIONS,
             allow_options=settings.ALLOW_OPTIONS,
         ))
+    if not db.query(DashboardUser).first():
+        # Bootstrap only: seeds the first account from .env so a fresh
+        # deploy isn't locked out. Once any user exists, DASHBOARD_* env
+        # vars are never consulted again - manage users from /users.
+        if not settings.DASHBOARD_PASSWORD:
+            raise RuntimeError(
+                "No dashboard users exist and DASHBOARD_PASSWORD is blank - "
+                "refusing to start. Set DASHBOARD_USERNAME/DASHBOARD_PASSWORD "
+                "in .env to bootstrap the first account (see .env.example)."
+            )
+        db.add(DashboardUser(
+            username=settings.DASHBOARD_USERNAME,
+            password_hash=bcrypt.hashpw(
+                settings.DASHBOARD_PASSWORD.encode(), bcrypt.gensalt()
+            ).decode(),
+        ))
+        logger.info("Seeded bootstrap dashboard user '%s' from .env", settings.DASHBOARD_USERNAME)
     db.commit()
     db.close()
     _scheduler = start_scheduler()
@@ -160,6 +175,69 @@ def reset_paper(
     state.paper_starting_cash = new_starting_cash
     db.commit()
     return RedirectResponse("/", status_code=303)
+
+
+@app.get("/users", response_class=HTMLResponse)
+def users_page(request: Request, db: Session = Depends(get_db)):
+    users = db.query(DashboardUser).order_by(DashboardUser.created_at.asc()).all()
+    return templates.TemplateResponse("users.html", {
+        "request": request,
+        "users": users,
+        "current_username": request.state.username,
+        "error": request.query_params.get("error"),
+    })
+
+
+@app.post("/users/add")
+def add_user(
+    username: str = Form(...),
+    password: str = Form(...),
+    confirm_password: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    username = username.strip()
+    errors = []
+    if not username:
+        errors.append("Username is required.")
+    elif db.query(DashboardUser).filter(DashboardUser.username == username).first():
+        errors.append(f"Username '{username}' already exists.")
+    if len(password) < 8:
+        errors.append("Password must be at least 8 characters.")
+    elif password != confirm_password:
+        errors.append("Passwords do not match.")
+
+    if errors:
+        return RedirectResponse(f"/users?error={quote(' '.join(errors))}", status_code=303)
+
+    db.add(DashboardUser(
+        username=username,
+        password_hash=bcrypt.hashpw(password.encode(), bcrypt.gensalt()).decode(),
+    ))
+    db.commit()
+    return RedirectResponse("/users", status_code=303)
+
+
+@app.post("/users/{user_id}/delete")
+def delete_user(user_id: int, request: Request, db: Session = Depends(get_db)):
+    target = db.query(DashboardUser).filter(DashboardUser.id == user_id).first()
+    if not target:
+        return RedirectResponse("/users", status_code=303)
+
+    if target.username == request.state.username:
+        return RedirectResponse(
+            f"/users?error={quote('Cannot delete the account you are currently logged in as.')}",
+            status_code=303,
+        )
+
+    if db.query(DashboardUser).count() <= 1:
+        return RedirectResponse(
+            f"/users?error={quote('Cannot delete the last remaining user.')}",
+            status_code=303,
+        )
+
+    db.delete(target)
+    db.commit()
+    return RedirectResponse("/users", status_code=303)
 
 
 @app.get("/healthz")
