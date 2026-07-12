@@ -1,0 +1,41 @@
+# day-trader stack - isolated from jmk-app / jmk-db / jmk-cloudflared.
+# Confirm these host ports against ~/src/README.md before first deploy.
+name: day-trader
+
+services:
+  day-trader-app:
+    build: .
+    container_name: day-trader-app
+    restart: unless-stopped
+    ports:
+      - "3002:8000"          # placeholder host port - confirm in ~/src/README.md
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://daytrader:daytrader@day-trader-db:5432/daytrader
+    depends_on:
+      day-trader-db:
+        condition: service_healthy
+    volumes:
+      - ./app/watchlist.yaml:/app/app/watchlist.yaml:ro
+
+  day-trader-db:
+    image: postgres:16-alpine
+    container_name: day-trader-db
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=daytrader
+      - POSTGRES_PASSWORD=daytrader
+      - POSTGRES_DB=daytrader
+    ports:
+      - "5434:5432"          # placeholder host port - confirm in ~/src/README.md
+    volumes:
+      - day-trader-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daytrader -d daytrader"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  day-trader-db-data:

@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>day-trader dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  :root { color-scheme: dark; }
+  body { font-family: -apple-system, Segoe UI, Roboto, sans-serif; background:#0f1115; color:#e5e7eb; margin:0; padding:24px; }
+  h1 { font-size:20px; margin:0 0 4px; }
+  .sub { color:#9ca3af; font-size:13px; margin-bottom:20px; }
+  .grid { display:grid; grid-template-columns: 2fr 1fr; gap:20px; }
+  .card { background:#1a1d24; border:1px solid #2a2e37; border-radius:10px; padding:16px; margin-bottom:20px; }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; font-weight:600; }
+  .badge.paper { background:#1e3a5f; color:#93c5fd; }
+  .badge.live { background:#5f1e1e; color:#fca5a5; }
+  .badge.running { background:#1e5f2e; color:#86efac; }
+  .badge.paused { background:#5f4a1e; color:#fcd34d; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid #2a2e37; }
+  th { color:#9ca3af; font-weight:500; }
+  .pos { color:#86efac; } .neg { color:#fca5a5; }
+  .action-buy { color:#86efac; font-weight:600; }
+  .action-sell { color:#fca5a5; font-weight:600; }
+  .action-hold { color:#9ca3af; }
+  button { background:#2563eb; color:white; border:none; padding:8px 14px; border-radius:6px; cursor:pointer; font-size:13px; }
+  button.danger { background:#dc2626; }
+  input[type=number] { background:#0f1115; border:1px solid #2a2e37; color:#e5e7eb; padding:6px 8px; border-radius:6px; width:80px; }
+  label { display:block; font-size:12px; color:#9ca3af; margin:10px 0 4px; }
+  .value { font-size:28px; font-weight:700; }
+  .reasoning { color:#9ca3af; font-size:12px; }
+</style>
+</head>
+<body>
+
+<h1>day-trader</h1>
+<div class="sub">
+  <span class="badge {{ state.mode }}">{{ state.mode | upper }}</span>
+  <span class="badge {{ 'running' if state.running else 'paused' }}">
+    {{ 'RUNNING' if state.running else 'PAUSED' }}
+  </span>
+  {% if state.paused_reason %} — {{ state.paused_reason }}{% endif %}
+  · last tick: {{ state.last_tick_at or 'never' }}
+</div>
+
+<div class="grid">
+  <div>
+    <div class="card">
+      <div class="value">${{ "%.2f"|format(latest_value) }}</div>
+      <div class="{{ 'pos' if total_return_pct >= 0 else 'neg' }}">
+        {{ "%+.2f"|format(total_return_pct) }}% since start
+      </div>
+      <canvas id="equityChart" height="80"></canvas>
+    </div>
+
+    <div class="card">
+      <h3>Open positions</h3>
+      <table>
+        <tr><th>Symbol</th><th>Qty</th><th>Avg cost</th></tr>
+        {% for p in positions %}
+        <tr><td>{{ p.symbol }}</td><td>{{ p.quantity }}</td><td>${{ "%.2f"|format(p.avg_cost) }}</td></tr>
+        {% else %}
+        <tr><td colspan="3">No open positions</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div class="card">
+      <h3>Recent AI decisions</h3>
+      <table>
+        <tr><th>Time</th><th>Symbol</th><th>Action</th><th>Qty</th><th>Conf.</th><th>Executed</th><th>Reasoning</th></tr>
+        {% for d in decisions %}
+        <tr>
+          <td>{{ d.timestamp.strftime("%m/%d %H:%M") }}</td>
+          <td>{{ d.symbol }}</td>
+          <td class="action-{{ d.action }}">{{ d.action | upper }}</td>
+          <td>{{ d.quantity or '-' }}</td>
+          <td>{{ "%.0f"|format((d.confidence or 0) * 100) }}%</td>
+          <td>{{ '✓' if d.executed else '—' }}</td>
+          <td class="reasoning">{{ d.reasoning }}{% if d.risk_note %} <em>[{{ d.risk_note }}]</em>{% endif %}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7">No decisions yet</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <h3>Controls</h3>
+      {% if state.running %}
+      <form method="post" action="/actions/pause"><button class="danger">Pause trading</button></form>
+      {% else %}
+      <form method="post" action="/actions/resume"><button>Resume trading</button></form>
+      {% endif %}
+    </div>
+
+    <div class="card">
+      <h3>Paper account</h3>
+      <div class="sub" style="margin:0 0 10px;">
+        Current baseline: ${{ "%.2f"|format(state.paper_starting_cash) }}
+      </div>
+      <form method="post" action="/actions/reset-paper"
+            onsubmit="return confirm('This wipes ALL paper trades, positions, snapshots, and AI decisions, and resets paper cash to the amount entered. This cannot be undone. Continue?');">
+        <label>New starting balance ($)</label>
+        <input type="number" step="1" min="0" name="new_starting_cash" value="{{ '%.2f'|format(state.paper_starting_cash) }}">
+
+        <div style="margin-top:12px;"><button class="danger" type="submit">Reset paper account to this amount</button></div>
+      </form>
+    </div>
+
+    <div class="card">
+      <h3>Risk limits</h3>
+      <form method="post" action="/actions/risk-config">
+        <label>Max position size (% of portfolio)</label>
+        <input type="number" step="0.1" name="max_position_pct" value="{{ '%.1f'|format(risk_cfg.max_position_pct * 100) }}">
+
+        <label>Max daily loss (%)</label>
+        <input type="number" step="0.1" name="max_daily_loss_pct" value="{{ '%.1f'|format(risk_cfg.max_daily_loss_pct * 100) }}">
+
+        <label>Max open positions</label>
+        <input type="number" step="1" name="max_open_positions" value="{{ risk_cfg.max_open_positions }}">
+
+        <label><input type="checkbox" name="allow_options" {{ 'checked' if risk_cfg.allow_options else '' }} style="width:auto"> Allow options</label>
+
+        <div style="margin-top:12px;"><button>Save limits</button></div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+const ctx = document.getElementById('equityChart');
+new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: {{ chart_labels | tojson }},
+    datasets: [{
+      label: 'Portfolio value',
+      data: {{ chart_values | tojson }},
+      borderColor: '#2563eb',
+      backgroundColor: 'rgba(37,99,235,0.1)',
+      fill: true,
+      tension: 0.2,
+      pointRadius: 0,
+    }]
+  },
+  options: {
+    plugins: { legend: { display: false } },
+    scales: {
+      x: { ticks: { color: '#9ca3af', maxTicksLimit: 8 }, grid: { color: '#2a2e37' } },
+      y: { ticks: { color: '#9ca3af' }, grid: { color: '#2a2e37' } },
+    }
+  }
+});
+</script>
+
+</body>
+</html>

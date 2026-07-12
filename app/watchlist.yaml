@@ -1,0 +1,13 @@
+# Editable without a rebuild (mounted read-only into the container).
+#
+# mode: "fixed" trades only the tickers listed below.
+#       "scan" also asks the market data adapter for the day's most
+#       active/volatile names and adds up to max_scan_candidates of them.
+mode: fixed
+tickers:
+  - AAPL
+  - MSFT
+  - NVDA
+  - AMD
+  - TSLA
+max_scan_candidates: 10
