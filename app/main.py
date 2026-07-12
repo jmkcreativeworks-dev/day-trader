@@ -9,6 +9,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from app.auth import BasicAuthMiddleware
 from app.config import settings
 from app.db import Base, engine, get_db
 from app.models import BotState, RiskConfig, PortfolioSnapshot, Position, AIDecision, Trade
@@ -27,7 +28,14 @@ with engine.begin() as conn:
         "paper_starting_cash FLOAT DEFAULT 10000"
     ))
 
+if not settings.DASHBOARD_PASSWORD:
+    raise RuntimeError(
+        "DASHBOARD_PASSWORD is not set - refusing to start. Set "
+        "DASHBOARD_USERNAME/DASHBOARD_PASSWORD in .env (see .env.example)."
+    )
+
 app = FastAPI(title="day-trader")
+app.add_middleware(BasicAuthMiddleware)
 templates = Jinja2Templates(directory="app/templates")
 
 _scheduler = None

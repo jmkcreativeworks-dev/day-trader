@@ -1,9 +1,11 @@
 # Changelog
 
-Entries here are limited to changes that affect **trading behavior**:
-risk limits, strategy/prompt changes, broker logic, or anything else
-that changes what the bot actually does. Not a full commit log or
-feature list — see `git log` for everything else.
+Entries here are limited to changes that affect **trading behavior**,
+or who/what can reach the controls that affect it: risk limits,
+strategy/prompt changes, broker logic, access-control changes to the
+dashboard/API, or anything else that changes what the bot actually
+does. Not a full commit log or feature list — see `git log` for
+everything else.
 
 ## 2026-07-11 — Paper account balance is now dashboard-editable/resettable
 
@@ -21,3 +23,17 @@ silently drift apart. Making the reset a deliberate, logged dashboard
 action means the starting balance for any given equity curve is always
 whatever the "Paper account" card says, not whatever `.env` happened to
 contain at container-start time.
+
+## 2026-07-12 — HTTP Basic Auth added to the whole app
+
+- New `app/auth.py` (`BasicAuthMiddleware`, raw ASGI middleware) gates
+  every route except `/healthz` behind `DASHBOARD_USERNAME` /
+  `DASHBOARD_PASSWORD`, checked with `secrets.compare_digest`.
+- App now refuses to start (`RuntimeError` at import time) if
+  `DASHBOARD_PASSWORD` is blank.
+
+**Why:** the dashboard's pause/resume, risk-limit, and paper-reset
+controls were reachable by anyone who could hit the box's LAN or
+Tailscale IP directly on port 3002, bypassing the Cloudflare Access
+gate in front of the normal hostname. Basic Auth is defense in depth
+for that path, not the primary access control.

@@ -16,9 +16,11 @@ This repo is tracked at `git@github.com:jmkcreativeworks-dev/day-trader.git`
 ## CHANGELOG.md — trading-behavior changes only
 
 Add an entry to `CHANGELOG.md` (project root) whenever a change affects
-what the bot actually does: risk limits, strategy/prompt changes,
-broker logic, anything touching order placement or position sizing.
-Not for unrelated changes (dashboard styling, deploy docs, etc.).
+what the bot actually does, or who/what can reach the controls that
+affect it: risk limits, strategy/prompt changes, broker logic, anything
+touching order placement or position sizing, and access-control changes
+to the dashboard/API (auth, exposed ports, etc.). Not for unrelated
+changes (dashboard styling, deploy docs, etc.).
 
 Each entry: date, what changed, why. This is the audit trail for "what
 logic was live" if a trade ever looks wrong in hindsight — treat it as

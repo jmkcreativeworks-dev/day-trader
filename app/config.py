@@ -33,5 +33,11 @@ class Settings:
 
     WATCHLIST_PATH: str = os.getenv("WATCHLIST_PATH", "app/watchlist.yaml")
 
+    # HTTP Basic Auth on the whole app - defense in depth in case the
+    # dashboard is ever reached directly via LAN/Tailscale IP instead of
+    # through the Cloudflare-Access-gated hostname.
+    DASHBOARD_USERNAME: str = os.getenv("DASHBOARD_USERNAME", "admin")
+    DASHBOARD_PASSWORD: str = os.getenv("DASHBOARD_PASSWORD", "")
+
 
 settings = Settings()
