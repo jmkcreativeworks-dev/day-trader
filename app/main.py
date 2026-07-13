@@ -111,6 +111,9 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         (latest_value - starting_value) / starting_value * 100 if starting_value else 0
     )
 
+    next_tick_job = _scheduler.get_job("run_tick") if _scheduler else None
+    next_tick_at = next_tick_job.next_run_time if next_tick_job else None
+
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
         "state": state,
@@ -121,6 +124,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "decisions": decisions,
         "latest_value": latest_value,
         "total_return_pct": total_return_pct,
+        "next_tick_at": next_tick_at.isoformat() if next_tick_at else None,
         "now": datetime.now(timezone.utc),
     })
 

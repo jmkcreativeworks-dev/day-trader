@@ -41,6 +41,7 @@
   </span>
   {% if state.paused_reason %} — {{ state.paused_reason }}{% endif %}
   · last tick: {{ state.last_tick_at or 'never' }}
+  · next tick in <span id="countdown">--:--</span>
   · <a href="/users" style="color:#93c5fd;">manage users</a>
 </div>
 
@@ -155,6 +156,20 @@ new Chart(ctx, {
     }
   }
 });
+
+const nextTickAt = {{ next_tick_at | tojson }};
+function updateCountdown() {
+  const el = document.getElementById('countdown');
+  if (!nextTickAt) { el.textContent = 'unknown'; return; }
+  const diffMs = new Date(nextTickAt) - new Date();
+  if (diffMs <= 0) { el.textContent = 'due now'; return; }
+  const totalSec = Math.floor(diffMs / 1000);
+  const m = Math.floor(totalSec / 60);
+  const s = totalSec % 60;
+  el.textContent = `${m}:${s.toString().padStart(2, '0')}`;
+}
+updateCountdown();
+setInterval(updateCountdown, 1000);
 </script>
 
 </body>
