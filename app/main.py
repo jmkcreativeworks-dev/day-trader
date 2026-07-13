@@ -82,6 +82,11 @@ def on_startup():
                 settings.TRADING_MODE, settings.TICK_INTERVAL_MINUTES)
 
 
+def _next_tick_at():
+    job = _scheduler.get_job("run_tick") if _scheduler else None
+    return job.next_run_time if job else None
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, db: Session = Depends(get_db)):
     state = db.query(BotState).first()
@@ -122,8 +127,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         (latest_value - starting_value) / starting_value * 100 if starting_value else 0
     )
 
-    next_tick_job = _scheduler.get_job("run_tick") if _scheduler else None
-    next_tick_at = next_tick_job.next_run_time if next_tick_job else None
+    next_tick_at = _next_tick_at()
 
     return templates.TemplateResponse("dashboard.html", {
         "request": request,
@@ -137,8 +141,21 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "latest_value": latest_value,
         "total_return_pct": total_return_pct,
         "next_tick_at": next_tick_at.isoformat() if next_tick_at else None,
+        "last_tick_at": state.last_tick_at.isoformat() if state and state.last_tick_at else None,
         "now": datetime.now(timezone.utc),
     })
+
+
+@app.get("/api/status")
+def api_status(db: Session = Depends(get_db)):
+    """Polled by the dashboard's JS to auto-reload the page right after a
+    tick actually finishes (not just on a fixed timer, since tick duration
+    varies with watchlist size/API latency)."""
+    state = db.query(BotState).first()
+    return {
+        "last_tick_at": state.last_tick_at.isoformat() if state and state.last_tick_at else None,
+        "next_tick_at": (lambda t: t.isoformat() if t else None)(_next_tick_at()),
+    }
 
 
 @app.post("/actions/pause")

@@ -192,6 +192,21 @@ function updateCountdown() {
 }
 updateCountdown();
 setInterval(updateCountdown, 1000);
+
+const initialLastTickAt = {{ last_tick_at | tojson }};
+async function pollForTick() {
+  try {
+    const res = await fetch('/api/status');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.last_tick_at && data.last_tick_at !== initialLastTickAt) {
+      location.reload();
+    }
+  } catch (e) {
+    // transient network hiccup - just try again on the next poll
+  }
+}
+setInterval(pollForTick, 5000);
 </script>
 
 </body>
