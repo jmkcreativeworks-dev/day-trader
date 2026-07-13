@@ -7,6 +7,26 @@ dashboard/API, or anything else that changes what the bot actually
 does. Not a full commit log or feature list — see `git log` for
 everything else.
 
+## 2026-07-13 — Fixed dependency breakage that silently prevented paper trading
+
+- `requirements.txt`: `httpx` pinned back to `0.27.2` (had been bumped to
+  `0.28.1` for the Phase 2 `mcp` dependency). httpx 0.28 dropped a
+  `proxies` kwarg that `anthropic==0.34.2` still passes internally, so
+  every tick's Claude call crashed with `TypeError` before producing a
+  decision. `mcp==1.28.1` only requires `httpx<1.0.0,>=0.27.1`, so
+  `0.27.2` satisfies both.
+- `yfinance` bumped to `0.2.66` (was `0.2.43`) — Yahoo's backend changed
+  in a way the old release couldn't handle, so every ticker request came
+  back as an empty/non-JSON response ("possibly delisted"), even for
+  obviously-live tickers like AAPL.
+
+**Why:** the dashboard and scheduler logs both showed the bot as
+"running" the whole time — `run_tick`'s own try/except logs and
+swallows per-tick failures rather than crashing the process — but it
+was silently producing zero real decisions. Both bugs were introduced
+incidentally alongside the Phase 2 MCP dependency additions, not by any
+`TRADING_MODE`/`LIVE_DRY_RUN` change; paper mode itself was just broken.
+
 ## 2026-07-11 — Paper account balance is now dashboard-editable/resettable
 
 - `bot_state.paper_starting_cash` (new column, self-migrating) replaces
