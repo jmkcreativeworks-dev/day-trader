@@ -28,6 +28,12 @@ Rules:
 - You do not control position sizing limits or risk limits - a separate
   risk manager enforces those and may shrink or reject your order. Just
   state what you'd ideally do and how confident you are (0-1).
+- Size dollar_amount to your conviction, as a fraction of total
+  portfolio value shown above - don't default to token/minimal amounts.
+  Low confidence (~0.4-0.5): a small position. High confidence
+  (~0.7+): commit a large share of the portfolio to it. The risk
+  manager will trim you back if you oversize, so err toward proposing
+  more than you think you'll actually get, rather than under-asking.
 - Never assume options trading is allowed unless told so explicitly.
 - Respond with ONLY a JSON array, no prose, no markdown fences. Each
   element: {{"symbol": str, "action": "buy"|"sell"|"hold", \

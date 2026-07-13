@@ -7,6 +7,32 @@ dashboard/API, or anything else that changes what the bot actually
 does. Not a full commit log or feature list — see `git log` for
 everything else.
 
+## 2026-07-13 — Loosened risk limits and prompt to take bigger, fewer bets
+
+- `risk_config` (live DB row, not just `.env`): `max_position_pct` 0.25 →
+  **0.45**, `max_open_positions` 8 → **3**, `max_daily_loss_pct` 0.02 →
+  **0.15**. `.env`'s bootstrap defaults for these updated to match, so a
+  fresh install/DB reset starts from the same profile rather than
+  reverting to the old conservative one.
+- `app/strategy/claude_decision_engine.py`: `SYSTEM_PROMPT` now
+  explicitly tells Claude to size `dollar_amount` as a fraction of
+  portfolio value scaled to its own stated confidence (small for
+  ~0.4-0.5, a large share of the portfolio for ~0.7+), and to err
+  toward proposing more than it expects to get rather than
+  under-asking, since the risk manager trims oversized requests anyway.
+
+**Why:** on the $20 paper account, decisions were landing as
+fractions-of-a-cent trades even after raising `max_position_pct` to
+0.25 alone - checked the data and found it was a mix of (a) Claude
+itself proposing small `dollar_amount`s with no sizing guidance, and
+(b) 8 concurrent positions each capped at a small per-symbol ceiling,
+so repeat buys into an already-owned symbol had almost no "room" left.
+Fewer concurrent positions + explicit confidence-scaled sizing guidance
+addresses both causes together; a single lever alone (e.g. raising
+`max_position_pct` further without touching the other two) was not
+expected to fix it based on the reasoning/room-limit evidence in
+`ai_decisions.risk_note`.
+
 ## 2026-07-13 — Raised max_tokens to stop responses truncating mid-JSON
 
 - `app/strategy/claude_decision_engine.py`: `max_tokens` raised from
