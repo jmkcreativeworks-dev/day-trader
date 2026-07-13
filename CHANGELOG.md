@@ -7,6 +7,21 @@ dashboard/API, or anything else that changes what the bot actually
 does. Not a full commit log or feature list — see `git log` for
 everything else.
 
+## 2026-07-13 — Watchlist switched from fixed to scan mode
+
+- `app/watchlist.yaml`: `mode: fixed` → `mode: scan`. On top of the 5
+  fixed tickers (AAPL/MSFT/NVDA/AMD/TSLA), each tick now adds up to
+  `max_scan_candidates` (10) of the day's biggest movers (by absolute
+  day-change %) from a 16-name universe, via
+  `YFinanceAdapter.scan_movers()` — already implemented, previously
+  unused since `mode` had never been switched on.
+
+**Why:** once paper trading was actually producing decisions (previous
+entry), the fixed 5-ticker watchlist wasn't showing enough volatility to
+produce anything but "hold". Scanning for real movers gives the
+decision engine more candidates that are more likely to have an
+actionable technical setup.
+
 ## 2026-07-13 — Fixed dependency breakage that silently prevented paper trading
 
 - `requirements.txt`: `httpx` pinned back to `0.27.2` (had been bumped to

@@ -3,7 +3,7 @@
 # mode: "fixed" trades only the tickers listed below.
 #       "scan" also asks the market data adapter for the day's most
 #       active/volatile names and adds up to max_scan_candidates of them.
-mode: fixed
+mode: scan
 tickers:
   - AAPL
   - MSFT
