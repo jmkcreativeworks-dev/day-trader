@@ -84,7 +84,7 @@
           <td class="action-{{ t.side }}">{{ t.side | upper }}</td>
           <td>{{ t.quantity }}</td>
           <td>${{ "%.2f"|format(t.price) }}</td>
-          <td>${{ "%.2f"|format(t.quantity * t.price) }}</td>
+          <td>${{ "%.4f"|format(t.quantity * t.price) }}</td>
           <td class="{{ 'pos' if t.realized_pnl and t.realized_pnl >= 0 else ('neg' if t.realized_pnl and t.realized_pnl < 0 else '') }}">
             {{ "%+.2f"|format(t.realized_pnl) if t.realized_pnl is not none else "—" }}
           </td>
