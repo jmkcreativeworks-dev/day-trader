@@ -7,6 +7,20 @@ dashboard/API, or anything else that changes what the bot actually
 does. Not a full commit log or feature list — see `git log` for
 everything else.
 
+## 2026-07-13 — Raised max_tokens to stop responses truncating mid-JSON
+
+- `app/strategy/claude_decision_engine.py`: `max_tokens` raised from
+  `2000` to `6000`.
+
+**Why:** once scan mode raised the per-tick ticker count above the
+original fixed 5, ticks started failing with
+`Could not parse Claude response as JSON` (logged, decisions silently
+dropped). Root cause: the model's response includes a large internal
+reasoning block that can consume over half of `max_tokens` on its own,
+so the actual JSON answer got cut off mid-object once there wasn't
+enough budget left for ~12+ tickers'-worth of output
+(`stop_reason: "max_tokens"`, confirmed by direct reproduction).
+
 ## 2026-07-13 — Claude decision prompt made less conservative
 
 - `app/strategy/claude_decision_engine.py`: `SYSTEM_PROMPT`'s rules no

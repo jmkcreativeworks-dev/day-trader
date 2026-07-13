@@ -96,7 +96,11 @@ class ClaudeDecisionEngine:
 
         message = self.client.messages.create(
             model=settings.CLAUDE_MODEL,
-            max_tokens=2000,
+            # 2000 wasn't enough headroom once scan mode raised the ticker
+            # count: the model's internal reasoning can use over half the
+            # budget on its own, truncating the JSON response before it's
+            # valid (stop_reason="max_tokens", empty/partial parse).
+            max_tokens=6000,
             system=system,
             messages=[{"role": "user", "content": context}],
         )
