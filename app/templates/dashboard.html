@@ -53,6 +53,12 @@
         {{ "%+.2f"|format(total_return_pct) }}% since start
       </div>
       <canvas id="equityChart" height="80"></canvas>
+      <table style="margin-top:12px;">
+        <tr><td>Cash on hand</td><td>${{ "%.2f"|format(cash) }}</td></tr>
+        <tr><td>Tied up in positions</td><td>${{ "%.2f"|format(positions_value) }}</td></tr>
+        <tr><td>Total bought (lifetime)</td><td>${{ "%.2f"|format(total_bought) }}</td></tr>
+        <tr><td>Total sold (lifetime)</td><td>${{ "%.2f"|format(total_sold) }}</td></tr>
+      </table>
     </div>
 
     <div class="card">

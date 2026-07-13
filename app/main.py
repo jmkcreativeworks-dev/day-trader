@@ -8,7 +8,7 @@ import bcrypt
 from fastapi import FastAPI, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import text
+from sqlalchemy import func, text
 from sqlalchemy.orm import Session
 
 from app.auth import BasicAuthMiddleware
@@ -126,6 +126,15 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     total_return_pct = (
         (latest_value - starting_value) / starting_value * 100 if starting_value else 0
     )
+    cash = snapshots[-1].cash if snapshots else baseline_cash
+    positions_value = snapshots[-1].positions_value if snapshots else 0.0
+
+    total_bought = db.query(func.coalesce(func.sum(Trade.quantity * Trade.price), 0.0)).filter(
+        Trade.mode == mode, Trade.side == "buy"
+    ).scalar()
+    total_sold = db.query(func.coalesce(func.sum(Trade.quantity * Trade.price), 0.0)).filter(
+        Trade.mode == mode, Trade.side == "sell"
+    ).scalar()
 
     next_tick_at = _next_tick_at()
 
@@ -140,6 +149,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "trades": trades,
         "latest_value": latest_value,
         "total_return_pct": total_return_pct,
+        "cash": cash,
+        "positions_value": positions_value,
+        "total_bought": total_bought,
+        "total_sold": total_sold,
         "next_tick_at": next_tick_at.isoformat() if next_tick_at else None,
         "last_tick_at": state.last_tick_at.isoformat() if state and state.last_tick_at else None,
         "now": datetime.now(timezone.utc),
