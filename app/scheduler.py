@@ -137,6 +137,7 @@ def start_scheduler() -> BackgroundScheduler:
     scheduler = BackgroundScheduler(timezone="UTC")
     scheduler.add_job(
         run_tick, "interval",
+        id="run_tick",
         minutes=settings.TICK_INTERVAL_MINUTES,
         next_run_time=datetime.now(timezone.utc) + timedelta(seconds=10),
     )
