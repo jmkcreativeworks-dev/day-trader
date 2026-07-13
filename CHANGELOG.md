@@ -7,6 +7,22 @@ dashboard/API, or anything else that changes what the bot actually
 does. Not a full commit log or feature list — see `git log` for
 everything else.
 
+## 2026-07-13 — Claude decision prompt made less conservative
+
+- `app/strategy/claude_decision_engine.py`: `SYSTEM_PROMPT`'s rules no
+  longer tell Claude "most ticks should result in mostly hold decisions
+  - only act when there is a clear signal." Now instructs it to act on
+  moderate signals (RSI extremes, a clear SMA20/SMA50 break, a sharp
+  move with supporting momentum) and treat "hold" as the exception
+  rather than the default.
+
+**Why:** paired with the scan-mode change above — during testing, every
+tick was returning "hold" across the board even on tickers with
+meaningful moves, because the prompt explicitly biased toward inaction.
+Position sizing and risk limits are still fully enforced downstream by
+`RiskManager` regardless of this change; it only affects how readily
+Claude proposes a buy/sell in the first place.
+
 ## 2026-07-13 — Watchlist switched from fixed to scan mode
 
 - `app/watchlist.yaml`: `mode: fixed` → `mode: scan`. On top of the 5

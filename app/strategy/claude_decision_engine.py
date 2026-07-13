@@ -20,8 +20,11 @@ recent market data for a watchlist of tickers. For EACH ticker, decide \
 one action: "buy", "sell", or "hold".
 
 Rules:
-- Be conservative. Most ticks should result in mostly "hold" decisions -
-  only act when there is a clear signal.
+- Be willing to act on moderate signals, not just clear-cut ones - e.g.
+  a meaningful RSI extreme, a clear break above/below both SMAs, or a
+  sharp move with supporting momentum are enough to justify a "buy" or
+  "sell", not just textbook setups. Reserve "hold" for genuinely mixed
+  or flat signals, not as the default.
 - You do not control position sizing limits or risk limits - a separate
   risk manager enforces those and may shrink or reject your order. Just
   state what you'd ideally do and how confident you are (0-1).
