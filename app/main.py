@@ -24,12 +24,15 @@ logger = logging.getLogger(__name__)
 
 Base.metadata.create_all(bind=engine)
 
-# Self-migrating: adds paper_starting_cash to installs that predate it.
-# No Alembic - this project has exactly one hand-rolled column migration.
+# Self-migrating: adds columns to installs that predate them. No Alembic -
+# just hand-rolled ALTER TABLE ... ADD COLUMN IF NOT EXISTS statements.
 with engine.begin() as conn:
     conn.execute(text(
         "ALTER TABLE bot_state ADD COLUMN IF NOT EXISTS "
         "paper_starting_cash FLOAT DEFAULT 10000"
+    ))
+    conn.execute(text(
+        "ALTER TABLE trades ADD COLUMN IF NOT EXISTS realized_pnl FLOAT"
     ))
 
 app = FastAPI(title="day-trader")
@@ -104,6 +107,14 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         .all()
     )
 
+    trades = (
+        db.query(Trade)
+        .filter(Trade.mode == mode)
+        .order_by(Trade.timestamp.desc())
+        .limit(50)
+        .all()
+    )
+
     baseline_cash = state.paper_starting_cash if state else settings.PAPER_STARTING_CASH
     latest_value = snapshots[-1].total_value if snapshots else baseline_cash
     starting_value = snapshots[0].total_value if snapshots else baseline_cash
@@ -122,6 +133,7 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         "chart_labels": [s.timestamp.strftime("%m/%d %H:%M") for s in snapshots],
         "chart_values": [s.total_value for s in snapshots],
         "decisions": decisions,
+        "trades": trades,
         "latest_value": latest_value,
         "total_return_pct": total_return_pct,
         "next_tick_at": next_tick_at.isoformat() if next_tick_at else None,

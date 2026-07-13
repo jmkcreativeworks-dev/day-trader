@@ -89,6 +89,7 @@ class PaperBroker(BrokerAdapter):
             pos.avg_cost = ((pos.avg_cost * pos.quantity) + (price * quantity)) / new_qty
             pos.quantity = new_qty
         else:
+            trade.realized_pnl = quantity * (price - pos.avg_cost)
             pos.quantity -= quantity
 
         self.db.commit()

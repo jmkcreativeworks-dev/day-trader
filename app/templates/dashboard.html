@@ -68,6 +68,28 @@
     </div>
 
     <div class="card">
+      <h3>Trade history</h3>
+      <table>
+        <tr><th>Time</th><th>Symbol</th><th>Side</th><th>Qty</th><th>Price</th><th>Amount</th><th>Realized P&amp;L</th></tr>
+        {% for t in trades %}
+        <tr>
+          <td>{{ t.timestamp.strftime("%m/%d %H:%M") }}</td>
+          <td>{{ t.symbol }}</td>
+          <td class="action-{{ t.side }}">{{ t.side | upper }}</td>
+          <td>{{ t.quantity }}</td>
+          <td>${{ "%.2f"|format(t.price) }}</td>
+          <td>${{ "%.2f"|format(t.quantity * t.price) }}</td>
+          <td class="{{ 'pos' if t.realized_pnl and t.realized_pnl >= 0 else ('neg' if t.realized_pnl and t.realized_pnl < 0 else '') }}">
+            {{ "%+.2f"|format(t.realized_pnl) if t.realized_pnl is not none else "—" }}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7">No trades yet</td></tr>
+        {% endfor %}
+      </table>
+    </div>
+
+    <div class="card">
       <h3>Recent AI decisions</h3>
       <table>
         <tr><th>Time</th><th>Symbol</th><th>Action</th><th>Qty</th><th>Conf.</th><th>Executed</th><th>Reasoning</th></tr>

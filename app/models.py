@@ -98,6 +98,7 @@ class Trade(Base):
     side = Column(String)  # buy | sell
     quantity = Column(Float)
     price = Column(Float)
+    realized_pnl = Column(Float, nullable=True)  # sells only; null for buys
     decision_id = Column(Integer, ForeignKey("ai_decisions.id"), nullable=True)
 
     decision = relationship("AIDecision", back_populates="trades")
